@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>写しこみ看板 入力アプリ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Hiragino Sans','Meiryo',sans-serif;font-size:15px;background:#f4f4f4;color:#222}
+header{background:#2c5f8a;color:#fff;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+header h1{font-size:16px;font-weight:bold}
+#saveStatus{font-size:11px;color:#aad}
+.btn{padding:6px 10px;border:none;border-radius:5px;cursor:pointer;font-size:13px;font-weight:bold}
+.btn-white{background:#fff;color:#2c5f8a}
+.btn-green{background:#2ecc71;color:#fff}
+.btn-red{background:#e74c3c;color:#fff}
+.btn-orange{background:#e67e22;color:#fff}
+.btn-blue{background:#3498db;color:#fff}
+.btn-gray{background:#888;color:#fff}
+.tabs{display:flex;background:#1a3f60;position:sticky;top:52px;z-index:99}
+.tab{flex:1;padding:10px 4px;text-align:center;color:#aad;cursor:pointer;font-size:13px;border-bottom:3px solid transparent}
+.tab.active{color:#fff;border-bottom:3px solid #4fc3f7;font-weight:bold}
+.panel{display:none;padding:12px}
+.panel.active{display:block}
+
+/* 件名バー（土層台帳の現場名バーと同型） */
+.kenmei-bar{background:#152a3e;padding:8px 12px;display:flex;gap:8px;align-items:center;border-bottom:1px solid #2c5f8a;flex-wrap:wrap}
+.kenmei-bar .kb-group{display:flex;align-items:center;gap:6px;flex:1;min-width:200px}
+.kenmei-bar label{font-size:12px;color:#7eb8e0;white-space:nowrap;font-weight:bold}
+.kenmei-bar input{flex:1;padding:6px 8px;font-size:13px;border:1px solid #2c5f8a;border-radius:4px;background:#0d1f2e;color:#fff}
+
+/* ===== 入力（スロット→ワークスペース） ===== */
+.ws-actions{display:grid;grid-template-columns:2fr 1fr;gap:8px;padding:8px 12px;background:#e7edf3;margin:-12px -12px 10px}
+.ws-actions .btn{padding:12px;font-size:14px}
+.slots{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;margin-bottom:10px}
+.slot{grid-column:span 2;text-align:left;border:1px solid #dbe3ec;border-left:4px solid #dbe3ec;border-radius:8px;background:#fbfcfe;padding:6px 9px;cursor:pointer;display:flex;flex-direction:column;gap:1px;min-height:50px}
+.slot .lb{font-size:10.5px;color:#7d8da3}
+.slot .vl{font-size:16px;font-weight:700;color:#213041;line-height:1.2;display:flex;align-items:center;gap:6px;min-height:19px}
+.slot .vl.empty{color:#b7c2cf;font-weight:500}
+.slot.active{border-color:#2c5f8a;border-left-color:#4fc3f7;background:#eef6fc}
+.slot.wide{grid-column:span 3}
+.slot.full{grid-column:span 6}
+@media(max-width:820px){.slots{grid-template-columns:repeat(4,1fr)}.slot,.slot.wide{grid-column:span 2}.slot.full{grid-column:span 4}}
+.ws{display:flex;flex-direction:column;background:#f4f7fa;border:1px solid #dbe3ec;border-radius:8px;overflow:hidden}
+.ws-head{padding:8px 14px;background:#152a3e;color:#fff;display:flex;align-items:center;gap:8px}
+.ws-head .k{font-size:11px;color:#9fc3e0}
+.ws-head .t{font-size:15px;font-weight:700}
+.ws-head .hint{margin-left:auto;font-size:11px;color:#9fb6cd}
+.ws-body{padding:12px;min-height:180px}
+.opt-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px}
+.opt{border:1px solid #dbe3ec;border-radius:8px;background:#fff;padding:12px 6px;font-size:15px;font-weight:600;color:#213041;cursor:pointer;text-align:center}
+.opt.sel{background:#2c5f8a;color:#fff;border-color:#2c5f8a}
+.opt.blank{color:#aab4c0;font-weight:500}
+.next-btn{width:100%;margin-top:12px;background:#eef6fc;border:1px solid #2c5f8a;color:#2c5f8a;border-radius:8px;padding:12px 6px;font-size:15px;font-weight:600;cursor:pointer;text-align:center}
+.pad{max-width:300px;margin:0 auto}
+.pad-disp{font-size:32px;font-weight:800;text-align:center;padding:8px;border:2px solid #2c5f8a;border-radius:10px;background:#fff;letter-spacing:.06em;margin-bottom:10px;color:#2c5f8a}
+.pad-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.key{padding:15px;font-size:21px;font-weight:700;border:1px solid #dbe3ec;border-radius:10px;background:#fff;cursor:pointer;text-align:center}
+textarea.ws-text,input.ws-text{width:100%;border:1px solid #dbe3ec;border-radius:8px;padding:12px;font-size:16px;font-family:inherit;background:#fff}
+textarea.ws-text{min-height:110px;resize:vertical}
+.ws-sub{font-size:12px;color:#556;font-weight:700;margin:12px 0 6px}
+/* 方向（八方位コンパス） */
+.compass{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-width:360px;margin:0 auto}
+.compass .opt{padding:16px 4px}
+.compass .ctr{background:#f4f7fa;border:1px dashed #b7c2cf;color:#7d8da3;font-weight:500;cursor:default;display:flex;align-items:center;justify-content:center;border-radius:8px;font-size:13px}
+.compass-note{font-size:12px;color:#667;text-align:center;margin-top:10px}
+input.ws-date{border:1px solid #dbe3ec;border-radius:8px;padding:12px;font-size:16px;font-family:inherit;background:#fff}
+
+/* ===== 一覧 ===== */
+.action-bar{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.count-badge{background:#2c5f8a;color:#fff;padding:4px 10px;border-radius:12px;font-size:13px}
+.list-table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px;min-width:640px;background:#fff}
+th{background:#2c5f8a;color:#fff;padding:7px 6px;text-align:left;white-space:nowrap}
+td{padding:6px;border-bottom:1px solid #ddd;vertical-align:top}
+tr:hover td{background:#f0f7ff}
+.edit-btn{background:#3498db;color:#fff;border:none;border-radius:3px;padding:3px 8px;cursor:pointer;font-size:12px}
+.show-btn{background:#2ecc71;color:#fff;border:none;border-radius:3px;padding:3px 8px;cursor:pointer;font-size:12px}
+.del-btn{background:#e74c3c;color:#fff;border:none;border-radius:3px;padding:3px 8px;cursor:pointer;font-size:12px}
+.notice{color:#888;font-size:12px;margin-top:6px}
+
+/* ===== 設定マスタ編集（土層台帳と同型） ===== */
+.master-group{margin-bottom:14px;border:1px solid #e4ebf2;border-radius:8px;padding:10px 12px;background:#fff}
+.master-glabel{font-size:13px;font-weight:700;color:#2c5f8a;margin-bottom:8px}
+.master-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.master-chip{display:inline-flex;align-items:center;gap:6px;background:#eef4fa;border:1px solid #cfe0ee;border-radius:16px;padding:4px 6px 4px 12px;font-size:13px;color:#213041}
+.master-chip button{border:none;background:#c0d0e0;color:#fff;border-radius:50%;width:18px;height:18px;font-size:11px;line-height:1;cursor:pointer;font-weight:700}
+.master-chip button:active{background:#e74c3c}
+.master-add{display:flex;gap:6px}
+.master-add input{flex:1;padding:8px;border:1px solid #ccc;border-radius:6px;font-size:14px}
+.qrfmt{background:#eef2f6;border-radius:8px;padding:10px 12px;font-size:12.5px;word-break:break-all;font-family:ui-monospace,Menlo,Consolas,monospace}
+
+/* ===== 全画面看板 ===== */
+/* 全画面は背景（余白）。中に4:3のパネルを中央配置する */
+#board{position:fixed;inset:0;z-index:1000;display:none;align-items:center;justify-content:center;padding:2vmin;user-select:none}
+#board.show{display:flex}
+#board.theme-white{background:#fff;color:#111}
+#board.theme-green{background:#123527;color:#F6F3E8}
+/* 4:3パネル本体。写真の枠に収まりやすく、QR周囲に余白を確保 */
+#board .b-panel{
+  aspect-ratio:4/3;
+  width:min(100%, calc((100vh - 4vmin) * 4 / 3));
+  max-height:calc(100vh - 4vmin);
+  container-type:size;
+  display:flex; flex-direction:column;
+  padding:4cqmin 4.5cqmin;
+  box-sizing:border-box;
+  position:relative;
+}
+/* パネルの縁を薄く示す（撮影時の位置合わせ・領域検出の目安） */
+#board.theme-white .b-panel{border:0.4cqmin solid #d8d8d8;border-radius:1.5cqmin}
+#board.theme-green .b-panel{border:0.4cqmin solid #2c5f45;border-radius:1.5cqmin}
+#board .b-top{display:flex;justify-content:space-between;align-items:baseline;gap:2cqmin}
+#board .b-kenmei{font-size:5.4cqmin;font-weight:700;letter-spacing:.04em;line-height:1.25}
+#board .b-kubun{font-size:3.6cqmin;opacity:.85;white-space:nowrap}
+#board .b-main{flex:1;display:flex;align-items:center;gap:4cqmin;min-height:0}
+#board .b-left{flex:1;min-width:0}
+#board .b-taishou{font-size:11cqmin;font-weight:800;line-height:1.12;word-break:break-all}
+#board .b-taishou2{font-size:8cqmin;font-weight:700;margin-top:1cqmin;line-height:1.15}
+#board .b-joukyou{font-size:8.6cqmin;font-weight:800;margin-top:2.4cqmin}
+#board .b-biko{font-size:3.4cqmin;opacity:.85;margin-top:1cqmin}
+#board .b-right{display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;gap:2cqmin}
+#board .b-houkou{font-size:8.6cqmin;font-weight:800;white-space:nowrap}
+#board .b-qr{background:#fff;border-radius:1.4cqmin;padding:2.4cqmin;line-height:0;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+#board .b-qr svg{display:block;width:24cqmin;height:24cqmin}
+#board .b-qr .noqr{width:24cqmin;height:24cqmin;display:flex;align-items:center;justify-content:center;font-size:2.6cqmin;color:#666;text-align:center;line-height:1.5}
+#board .b-bottom{display:flex;justify-content:space-between;align-items:flex-end;gap:2cqmin}
+#board .b-meta{font-size:4.6cqmin;font-weight:600;line-height:1.5}
+#board .b-clock{font-size:3.2cqmin;opacity:.75;margin-top:.6cqmin;font-family:ui-monospace,Menlo,Consolas,monospace}
+#closeBoard{position:absolute;top:1.6vmin;right:1.8vmin;width:7vmin;height:7vmin;min-width:40px;min-height:40px;border-radius:50%;border:none;cursor:pointer;font-size:3.4vmin;background:rgba(128,128,128,.18);color:inherit}
+#themeToggle{position:absolute;top:1.6vmin;left:1.8vmin;min-width:40px;min-height:40px;padding:0 2.4vmin;border-radius:999px;border:1px solid rgba(128,128,128,.4);cursor:pointer;font-size:2.8vmin;background:transparent;color:inherit;opacity:.6}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📷 写しこみ看板 <span style="font-size:12px;font-weight:400;color:#aad;letter-spacing:.02em">ver.0.3</span></h1>
+  <div id="saveStatus">記録：0件</div>
+</header>
+
+<!-- 件名・調査区分バー -->
+<div class="kenmei-bar">
+  <div class="kb-group">
+    <label>件名</label>
+    <input type="text" id="kenmei" placeholder="例：中里峽上遺跡　中里3-11地点">
+  </div>
+  <div class="kb-group" style="max-width:280px">
+    <label>調査区分</label>
+    <input type="text" id="kubun" placeholder="例：本調査">
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('input')">入力</div>
+  <div class="tab" onclick="switchTab('list')">一覧 (<span id="countBadge">0</span>)</div>
+  <div class="tab" onclick="switchTab('settings')">設定</div>
+</div>
+
+<!-- ===== 入力タブ ===== -->
+<div class="panel active" id="panel-input">
+  <div class="ws-actions">
+    <button class="btn btn-green" onclick="showBoardFromForm()">📋 看板を表示（記録される）</button>
+    <button class="btn btn-gray" onclick="resetForm()">リセット</button>
+  </div>
+  <div class="slots" id="ws-slots"></div>
+  <div class="ws">
+    <div class="ws-head"><span class="k">編集中</span><span class="t" id="ws-title"></span><span class="hint" id="ws-hint"></span></div>
+    <div class="ws-body" id="ws-body"></div>
+  </div>
+</div>
+
+<!-- ===== 一覧タブ ===== -->
+<div class="panel" id="panel-list">
+  <div class="action-bar">
+    <span class="count-badge" id="listCount">0件</span>
+    <button class="btn btn-white" onclick="exportCSV()" style="border:1px solid #ccc">📥 CSV出力（台帳列）</button>
+    <button class="btn btn-white" onclick="exportJSON()" style="border:1px solid #ccc">💾 JSON保存</button>
+    <button class="btn btn-white" onclick="document.getElementById('jsonFileInput').click()" style="border:1px solid #ccc">📂 JSON読込</button>
+    <input type="file" id="jsonFileInput" accept=".json" style="display:none" onchange="loadJSONFile(event)">
+  </div>
+  <p class="notice">CSVは写真台帳（入力シート）の列順。フォルダ・ファイル名・種別1はアプリ②側で扱う空欄です。</p>
+  <div class="list-table-wrap" style="margin-top:8px">
+    <table>
+      <thead><tr><th>#</th><th>対象</th><th>状況</th><th>方向</th><th>撮影日</th><th>撮影者</th><th>種別</th><th>最終表示</th><th>操作</th></tr></thead>
+      <tbody id="listBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== 設定タブ ===== -->
+<div class="panel" id="panel-settings">
+  <h3 style="font-size:14px;margin-bottom:8px">選択肢マスタ（追加）</h3>
+  <div id="masterEditor"></div>
+  <hr style="margin:14px 0">
+  <h3 style="font-size:14px;margin-bottom:8px">QRデータ形式</h3>
+  <div class="qrfmt">T1|件名|調査区分|対象1|対象2|状況|方向|撮影日|撮影者|種別|備考</div>
+  <p class="notice">区切りは「|」。項目内の「|」は「／」に置換。誤り訂正レベルM。アプリ②はこの並びで復元します。</p>
+  <hr style="margin:14px 0">
+  <h3 style="font-size:14px;margin-bottom:8px">データ</h3>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:480px">
+    <button class="btn btn-red" onclick="clearAll()">🗑 記録を全削除</button>
+  </div>
+  <p class="notice" style="margin-top:10px">
+    運用メモ：看板を撮る → 対象を数枚 → 次の看板を撮る（QR入り写真が区切り）。画面輝度は最大に。
+    「看板を表示」した時刻はすべて記録され、JSONに含まれます（時刻照合フォールバック用）。
+  </p>
+</div>
+
+<!-- ===== 全画面看板 ===== -->
+<div id="board" class="theme-white">
+  <button id="themeToggle" onclick="toggleTheme(event)">白 / 緑</button>
+  <button id="closeBoard" onclick="closeBoard()">✕</button>
+  <div class="b-panel">
+    <div class="b-top">
+      <div class="b-kenmei" id="bKenmei"></div>
+      <div class="b-kubun" id="bKubun"></div>
+    </div>
+    <div class="b-main">
+      <div class="b-left">
+        <div class="b-taishou" id="bT1"></div>
+        <div class="b-taishou2" id="bT2"></div>
+        <div class="b-joukyou" id="bJoukyou"></div>
+        <div class="b-biko" id="bBiko"></div>
+      </div>
+      <div class="b-right">
+        <div class="b-houkou" id="bHoukou"></div>
+        <div class="b-qr" id="bQr"></div>
+      </div>
+    </div>
+    <div class="b-bottom">
+      <div class="b-meta">
+        <span id="bDate"></span>　<span id="bSha"></span>
+        <div class="b-clock" id="bClock"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+// ===== 選択肢マスタ =====
+const MASTERS = {
+  ikoType: ['SA','SB','SC','SD','SE','SF','SG','SH','SI','SJ','SK','SL','SM','SN','SO','SP','SS','ST','SU','SW','SX','SY','SZ','NR'],
+  taishou2: ['カマド','炉','P1','P2','P3','P4','P5','貯蔵穴'],
+  joukyou: ['検出','完掘','断面','掘方完掘','掘方断面','出土状況','検出状況','設定状況','復旧状況','全景','近景'],
+  shubetsu: ['調査','管理','測量','3D','作業風景','メモ'],
+  sha: []
+};
+const DIRS = [['北西','北','北東'],['西',null,'東'],['南西','南','南東']];
+
+// localStorage追加マスタをマージ（土層台帳と同方式）
+function loadLocalMasters() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('kanbanMasters') || '{}');
+    Object.keys(saved).forEach(k => {
+      if (MASTERS[k]) saved[k].forEach(v => { if (!MASTERS[k].includes(v)) MASTERS[k].push(v); });
+    });
+    const del = JSON.parse(localStorage.getItem('kanbanMastersDel') || '{}');
+    Object.keys(del).forEach(k => {
+      if (MASTERS[k]) MASTERS[k] = MASTERS[k].filter(v => !del[k].includes(v));
+    });
+  } catch(e) {}
+}
+
+// ===== IndexedDB =====
+let db;
+function openDB(){
+  return new Promise((res,rej)=>{
+    const req = indexedDB.open("shashikomiKanban", 1);
+    req.onupgradeneeded = e=>{
+      const d = e.target.result;
+      if(!d.objectStoreNames.contains("records")) d.createObjectStore("records",{keyPath:"id",autoIncrement:true});
+      if(!d.objectStoreNames.contains("kv")) d.createObjectStore("kv",{keyPath:"k"});
+    };
+    req.onsuccess = e=>{db=e.target.result;res();};
+    req.onerror = e=>rej(e);
+  });
+}
+function kvGet(k){return new Promise(res=>{const t=db.transaction("kv").objectStore("kv").get(k);t.onsuccess=()=>res(t.result?t.result.v:undefined);t.onerror=()=>res(undefined);});}
+function kvSet(k,v){return new Promise(res=>{const t=db.transaction("kv","readwrite").objectStore("kv").put({k,v});t.onsuccess=()=>res();t.onerror=()=>res();});}
+function recAdd(rec){return new Promise(res=>{const t=db.transaction("records","readwrite").objectStore("records").add(rec);t.onsuccess=e=>res(e.target.result);});}
+function recPut(rec){return new Promise(res=>{db.transaction("records","readwrite").objectStore("records").put(rec).onsuccess=()=>res();});}
+function recAll(){return new Promise(res=>{const out=[];const c=db.transaction("records").objectStore("records").openCursor();c.onsuccess=e=>{const cur=e.target.result;if(cur){out.push(cur.value);cur.continue();}else res(out);};});}
+function recDel(id){return new Promise(res=>{db.transaction("records","readwrite").objectStore("records").delete(id).onsuccess=()=>res();});}
+function recClear(){return new Promise(res=>{db.transaction("records","readwrite").objectStore("records").clear().onsuccess=()=>res();});}
+
+// ===== 入力状態 =====
+function todayStr(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
+let S = {ikoType:'',ikoNum:'',t1free:'',t2:'',joukyou:'',houkou:'',sha:'',shubetsu:'',date:todayStr(),biko:''};
+
+const _d=id=>document.getElementById(id);
+const _esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const _eq=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+
+// ===== スロット定義 =====
+const IF={
+  ikoType:{label:'遺構種別',type:'list',master:'ikoType',key:'ikoType',span:2},
+  ikoNum:{label:'番号',type:'num',key:'ikoNum',pad:2,max:99,span:2},
+  t1free:{label:'対象1（自由入力・優先）',type:'text',key:'t1free',ph:'例：A区全景・1号トレンチ',span:2},
+  t2:{label:'対象2',type:'listtext',master:'taishou2',key:'t2',ph:'自由入力も可',span:3},
+  joukyou:{label:'状況',type:'list',master:'joukyou',key:'joukyou',span:3},
+  houkou:{label:'方向',type:'compass',key:'houkou',span:2},
+  sha:{label:'撮影者',type:'listtext',master:'sha',key:'sha',ph:'氏名',span:2},
+  shubetsu:{label:'種別',type:'list',master:'shubetsu',key:'shubetsu',span:2},
+  date:{label:'撮影日',type:'date',key:'date',span:3},
+  biko:{label:'備考',type:'textarea',key:'biko',ph:'自由記入（看板には小さく表示）',span:3}
+};
+const IFORDER=['ikoType','ikoNum','t1free','t2','joukyou','houkou','sha','shubetsu','date','biko'];
+let ifActive='ikoType';
+
+function taishou1(){ return S.t1free.trim() || ((S.ikoType||'')+(S.ikoNum||'')); }
+function ifVal(key){
+  if(key==='houkou')return S.houkou?S.houkou+'から':'';
+  if(key==='date')return (S.date||'').replace(/-/g,'.');
+  return S[key]||'';
+}
+
+function syncInputUI(){
+  const sl=_d('ws-slots');
+  sl.innerHTML=IFORDER.map(key=>{
+    const f=IF[key],v=ifVal(key);
+    const cls='slot'+(f.span===3?' wide':f.span===6?' full':'')+(ifActive===key?' active':'');
+    return `<button class="${cls}" onclick="ifSelect('${key}')"><span class="lb">${f.label}</span><span class="vl ${v?'':'empty'}">${_esc(v)||'—'}</span></button>`;
+  }).join('');
+}
+function ifSelect(key){ifActive=key;syncInputUI();ifRenderWS();}
+function ifAdvance(){const idx=IFORDER.indexOf(ifActive);if(idx>=0&&idx<IFORDER.length-1)ifSelect(IFORDER[idx+1]);}
+function ifRenderWS(){
+  const f=IF[ifActive];
+  _d('ws-title').textContent=f.label;
+  _d('ws-hint').textContent={list:'タップで選択',listtext:'タップで選択／下で自由入力',num:'数字を入力',text:'入力',textarea:'入力',compass:'撮影者の立ち位置をタップ',date:'日付を選択'}[f.type]||'';
+  const b=_d('ws-body');
+  if(f.type==='list')b.innerHTML=wsList(f);
+  else if(f.type==='listtext')b.innerHTML=wsListText(f);
+  else if(f.type==='num')b.innerHTML=wsPad(f);
+  else if(f.type==='text'||f.type==='textarea')b.innerHTML=wsText(f);
+  else if(f.type==='compass')b.innerHTML=wsCompass();
+  else if(f.type==='date')b.innerHTML=wsDate(f);
+}
+function nextBtnHtml(){return `<button class="next-btn" onclick="ifAdvance()">→ 次へ（変更せず進む）</button>`;}
+function wsList(f){
+  const cur=S[f.key];
+  const cells=MASTERS[f.master].filter(v=>v!=='').map(v=>`<button class="opt${v===cur?' sel':''}" onclick="ifSetList('${f.key}','${_eq(v)}')">${_esc(v)}</button>`).join('');
+  return `<div class="opt-grid">${cells}<button class="opt blank${cur===''?' sel':''}" onclick="ifSetList('${f.key}','',true)">クリア</button></div>`+nextBtnHtml();
+}
+function wsListText(f){
+  const cur=S[f.key];
+  const inList=MASTERS[f.master].includes(cur);
+  const cells=MASTERS[f.master].filter(v=>v!=='').map(v=>`<button class="opt${v===cur?' sel':''}" onclick="ifSetList('${f.key}','${_eq(v)}')">${_esc(v)}</button>`).join('');
+  return `<div class="opt-grid">${cells}<button class="opt blank${cur===''?' sel':''}" onclick="ifSetList('${f.key}','',true)">クリア</button></div>`+
+    `<div class="ws-sub">自由入力</div><input class="ws-text" placeholder="${_esc(f.ph||'')}" value="${inList?'':_esc(cur)}" oninput="ifSetText('${f.key}',this.value)">`+nextBtnHtml();
+}
+function ifSetList(key,v,noAdvance){S[key]=v;syncInputUI();if(noAdvance)ifRenderWS();else ifAdvance();}
+function ifSetText(key,v){S[key]=v;syncInputUI();}
+function wsPad(f){
+  const cur=S[f.key]||'';
+  const keys=['1','2','3','4','5','6','7','8','9','⌫','0','C'];
+  return `<div class="pad"><div class="pad-disp">${cur||'—'}</div><div class="pad-grid">`+keys.map(k=>`<button class="key" onclick="ifPad('${f.key}','${k}')">${k}</button>`).join('')+`</div>${nextBtnHtml()}</div>`;
+}
+function ifPad(key,k){
+  const f=IF[key];let cur=S[key]||'';
+  let base=cur.replace(/^0+(?=\d)/,'');
+  if(k==='C')base='';
+  else if(k==='⌫')base=base.slice(0,-1);
+  else{const nx=(base+k).replace(/^0+(?=\d)/,'');if(nx!==''&&parseInt(nx,10)<=f.max)base=nx;}
+  S[key]=base===''?'':(f.pad?base.padStart(f.pad,'0'):base);
+  syncInputUI();ifRenderWS();
+}
+function wsText(f){
+  const val=_esc(S[f.key]);
+  if(f.type==='textarea')return `<textarea class="ws-text" placeholder="${_esc(f.ph||'')}" oninput="ifSetText('${f.key}',this.value)">${val}</textarea>`+nextBtnHtml();
+  return `<input class="ws-text" placeholder="${_esc(f.ph||'')}" value="${val}" oninput="ifSetText('${f.key}',this.value)">`+nextBtnHtml();
+}
+function wsCompass(){
+  const cells=DIRS.flat().map(d=>{
+    if(d===null)return `<div class="ctr">対象</div>`;
+    return `<button class="opt${S.houkou===d?' sel':''}" onclick="ifSetList('houkou','${d}')">${d}から</button>`;
+  }).join('');
+  return `<div class="compass">${cells}</div><div class="compass-note">例：対象の南側に立って撮る →「南から」</div>`+nextBtnHtml();
+}
+function wsDate(f){
+  return `<input type="date" class="ws-date" value="${_esc(S.date)}" onchange="ifSetText('date',this.value)">`+
+    `<button class="opt" style="margin-left:8px;display:inline-block" onclick="ifSetText('date','${todayStr()}');ifRenderWS()">今日</button>`+nextBtnHtml();
+}
+function resetForm(){
+  S.ikoType='';S.ikoNum='';S.t1free='';S.t2='';S.joukyou='';S.houkou='';S.shubetsu='';S.biko='';
+  syncInputUI();ifSelect('ikoType');
+}
+
+// ===== タブ =====
+function switchTab(name){
+  document.querySelectorAll('.tab').forEach((t,i)=>{
+    const names=['input','list','settings'];
+    t.classList.toggle('active',names[i]===name);
+  });
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${name}`));
+  if(name==='list')renderList();
+  if(name==='settings')buildMasterEditor();
+}
+
+// ===== レコード =====
+function formToRec(){
+  return {
+    kenmei:_d('kenmei').value.trim(), kubun:_d('kubun').value.trim(),
+    t1:taishou1(), t2:(S.t2||'').trim(), joukyou:S.joukyou, houkou:S.houkou,
+    date:S.date||todayStr(), sha:(S.sha||'').trim(), shubetsu:S.shubetsu, biko:(S.biko||'').trim(),
+    createdAt:new Date().toISOString(), shownAt:[]
+  };
+}
+function recToForm(r){
+  _d('kenmei').value=r.kenmei||''; _d('kubun').value=r.kubun||'';
+  // 対象1をできるだけ 種別+番号 に分解して復元
+  S.ikoType='';S.ikoNum='';S.t1free='';
+  const m=(r.t1||'').match(/^([A-Z]{1,2})(\d{1,2})$/);
+  if(m&&MASTERS.ikoType.includes(m[1])){S.ikoType=m[1];S.ikoNum=m[2].padStart(2,'0');}
+  else S.t1free=r.t1||'';
+  S.t2=r.t2||'';S.joukyou=r.joukyou||'';S.houkou=r.houkou||'';
+  S.sha=r.sha||'';S.shubetsu=r.shubetsu||'';S.date=r.date||todayStr();S.biko=r.biko||'';
+  syncInputUI();ifSelect('ikoType');
+}
+async function updateCount(){
+  const n=(await recAll()).length;
+  _d('countBadge').textContent=n;
+  _d('listCount').textContent=n+'件';
+  _d('saveStatus').textContent='記録：'+n+'件';
+}
+
+// ===== QR =====
+function escP(s){return (s||"").replace(/\|/g,"／");}
+function qrPayload(r){
+  return ["T1",r.kenmei,r.kubun,r.t1,r.t2,r.joukyou,r.houkou,r.date,r.sha,r.shubetsu,r.biko].map(escP).join("|");
+}
+function renderQR(r){
+  const box=_d("bQr");
+  try{
+    if(typeof qrcode==="undefined")throw new Error("lib");
+    if(qrcode.stringToBytesFuncs&&qrcode.stringToBytesFuncs["UTF-8"])qrcode.stringToBytes=qrcode.stringToBytesFuncs["UTF-8"];
+    const q=qrcode(0,"M");q.addData(qrPayload(r),"Byte");q.make();
+    box.innerHTML=q.createSvgTag({cellSize:8,margin:0});
+  }catch(e){
+    box.innerHTML='<div class="noqr">QR生成不可<br>（オンラインで再読込<br>してください）</div>';
+  }
+}
+
+// ===== 看板表示 =====
+let wakeLock=null,clockTimer=null;
+async function showBoard(r,recId){
+  _d("bKenmei").textContent=r.kenmei||"";
+  _d("bKubun").textContent=r.kubun||"";
+  _d("bT1").textContent=r.t1||"";
+  _d("bT2").textContent=r.t2||"";
+  _d("bJoukyou").textContent=r.joukyou||"";
+  _d("bHoukou").textContent=r.houkou?(r.houkou+"から"):"";
+  _d("bDate").textContent=(r.date||"").replace(/-/g,".");
+  _d("bSha").textContent=r.sha||"";
+  _d("bBiko").textContent=r.biko||"";
+  renderQR(r);
+  _d("board").classList.add("show");
+  if(recId!=null){
+    const all=await recAll();
+    const rec=all.find(x=>x.id===recId);
+    if(rec){rec.shownAt=rec.shownAt||[];rec.shownAt.push(new Date().toISOString());await recPut(rec);}
+  }
+  try{if("wakeLock" in navigator)wakeLock=await navigator.wakeLock.request("screen");}catch(e){}
+  try{if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();}catch(e){}
+  const tick=()=>{_d("bClock").textContent=new Date().toLocaleTimeString("ja-JP",{hour12:false});};
+  tick();clockTimer=setInterval(tick,1000);
+}
+async function showBoardFromForm(){
+  const r=formToRec();
+  if(!r.t1&&!r.kenmei){alert("件名か対象1を入力してください");return;}
+  r.shownAt=[new Date().toISOString()];
+  const id=await recAdd(r);
+  updateCount();
+  showBoard(r,id);
+}
+function closeBoard(){
+  _d("board").classList.remove("show");
+  if(wakeLock){try{wakeLock.release();}catch(e){}wakeLock=null;}
+  if(clockTimer){clearInterval(clockTimer);clockTimer=null;}
+  try{if(document.fullscreenElement)document.exitFullscreen();}catch(e){}
+}
+function toggleTheme(ev){
+  ev.stopPropagation();
+  const b=_d("board");
+  b.classList.toggle("theme-white");b.classList.toggle("theme-green");
+}
+
+// ===== 一覧 =====
+async function renderList(){
+  const body=_d('listBody');
+  const all=(await recAll()).sort((a,b)=>b.id-a.id);
+  updateCount();
+  if(!all.length){body.innerHTML='<tr><td colspan="9" style="color:#889;text-align:center;padding:16px">まだ記録がありません</td></tr>';return;}
+  body.innerHTML=all.map(r=>{
+    const shown=(r.shownAt&&r.shownAt.length)?r.shownAt[r.shownAt.length-1].replace("T"," ").slice(5,16):"";
+    return `<tr>
+      <td>${r.id}</td>
+      <td><b>${_esc([r.t1,r.t2].filter(Boolean).join(" "))||'—'}</b></td>
+      <td>${_esc(r.joukyou||'')}</td>
+      <td>${_esc(r.houkou?r.houkou+'から':'')}</td>
+      <td>${_esc((r.date||'').replace(/-/g,'.'))}</td>
+      <td>${_esc(r.sha||'')}</td>
+      <td>${_esc(r.shubetsu||'')}</td>
+      <td style="font-family:ui-monospace,Menlo,monospace;font-size:12px">${shown}</td>
+      <td style="white-space:nowrap">
+        <button class="show-btn" onclick="reShow(${r.id})">再表示</button>
+        <button class="edit-btn" onclick="dupEdit(${r.id})">複製編集</button>
+        <button class="del-btn" onclick="delRec(${r.id})">削除</button>
+      </td></tr>`;
+  }).join('');
+}
+async function reShow(id){const all=await recAll();const r=all.find(x=>x.id===id);if(r)showBoard(r,id);}
+async function dupEdit(id){const all=await recAll();const r=all.find(x=>x.id===id);if(r){recToForm(r);switchTab('input');window.scrollTo(0,0);}}
+async function delRec(id){if(confirm('#'+id+' を削除しますか？')){await recDel(id);renderList();}}
+async function clearAll(){
+  if(confirm('記録をすべて削除しますか？（CSV/JSONを出力済みか確認してください）')){await recClear();updateCount();renderList();}
+}
+
+// ===== 出力 =====
+function dl(name,blob){
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);a.download=name;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),3000);
+}
+async function exportCSV(){
+  const all=(await recAll()).sort((a,b)=>a.id-b.id);
+  if(!all.length){alert('データがありません。');return;}
+  const head=["連番","調査区分","対象1","対象2","状況","方向","撮影日","撮影者","種別1","種別2","フォルダ","ファイル名","備考"];
+  const q=s=>'"'+String(s==null?"":s).replace(/"/g,'""')+'"';
+  const rows=all.map((r,i)=>[
+    i+1,r.kubun,r.t1,r.t2,r.joukyou,r.houkou,(r.date||"").replace(/-/g,"/"),r.sha,"",r.shubetsu,"","",r.biko
+  ].map(q).join(","));
+  const csv="\uFEFF"+head.map(q).join(",")+"\r\n"+rows.join("\r\n")+"\r\n";
+  dl("写しこみ看板_"+todayStr()+".csv",new Blob([csv],{type:"text/csv;charset=utf-8"}));
+}
+async function exportJSON(){
+  const all=(await recAll()).sort((a,b)=>a.id-b.id);
+  if(!all.length){alert('データがありません。');return;}
+  dl("写しこみ看板_"+todayStr()+".json",
+     new Blob([JSON.stringify({app:"写しこみ看板",version:"0.2",exportedAt:new Date().toISOString(),records:all},null,2)],{type:"application/json"}));
+}
+function loadJSONFile(ev){
+  const f=ev.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=async()=>{
+    try{
+      const data=JSON.parse(rd.result);
+      const recs=data.records||[];
+      if(!recs.length){alert('レコードがありません');return;}
+      if(!confirm(recs.length+'件を読み込んで追加しますか？'))return;
+      for(const r of recs){const c={...r};delete c.id;await recAdd(c);}
+      updateCount();renderList();
+      alert('読み込みました');
+    }catch(e){alert('JSONの読み込みに失敗しました');}
+  };
+  rd.readAsText(f);ev.target.value='';
+}
+
+// ===== マスタ設定（土層台帳と同型） =====
+function buildMasterEditor(){
+  const container=_d('masterEditor');
+  const groups=[
+    {label:'遺構種別（対象1）',key:'ikoType'},
+    {label:'対象2',key:'taishou2'},
+    {label:'状況',key:'joukyou'},
+    {label:'種別',key:'shubetsu'},
+    {label:'撮影者（プロジェクトごと）',key:'sha'},
+  ];
+  container.innerHTML=groups.map(g=>`
+    <div class="master-group">
+      <div class="master-glabel">${g.label}</div>
+      <div class="master-chips">
+        ${(MASTERS[g.key]||[]).filter(v=>v!=='').map(v=>`<span class="master-chip">${_esc(v)}<button title="削除" onclick="removeMaster('${_eq(g.key)}','${_eq(v)}')">✕</button></span>`).join('')||'<span style="color:#aaa;font-size:12px">（項目なし）</span>'}
+      </div>
+      <div class="master-add">
+        <input type="text" id="add_${g.key}" placeholder="追加する値">
+        <button class="btn btn-blue" onclick="addMaster('${_eq(g.key)}')">追加</button>
+      </div>
+    </div>`).join('');
+}
+function addMaster(key){
+  const input=_d(`add_${key}`);
+  const val=input.value.trim();
+  if(!val)return;
+  if(!MASTERS[key].includes(val)){
+    MASTERS[key].push(val);
+    try{
+      const saved=JSON.parse(localStorage.getItem('kanbanMasters')||'{}');
+      if(!saved[key])saved[key]=[];
+      if(!saved[key].includes(val))saved[key].push(val);
+      localStorage.setItem('kanbanMasters',JSON.stringify(saved));
+      const del=JSON.parse(localStorage.getItem('kanbanMastersDel')||'{}');
+      if(del[key]&&del[key].includes(val)){del[key]=del[key].filter(v=>v!==val);localStorage.setItem('kanbanMastersDel',JSON.stringify(del));}
+    }catch(e){}
+    buildMasterEditor();syncInputUI();ifRenderWS();
+  }else{alert('すでに存在します。');}
+  input.value='';
+}
+function removeMaster(key,val){
+  if(!confirm(`「${val}」を削除しますか？`))return;
+  MASTERS[key]=MASTERS[key].filter(v=>v!==val);
+  try{
+    const saved=JSON.parse(localStorage.getItem('kanbanMasters')||'{}');
+    if(saved[key]){saved[key]=saved[key].filter(v=>v!==val);localStorage.setItem('kanbanMasters',JSON.stringify(saved));}
+    const del=JSON.parse(localStorage.getItem('kanbanMastersDel')||'{}');
+    if(!del[key])del[key]=[];
+    if(!del[key].includes(val))del[key].push(val);
+    localStorage.setItem('kanbanMastersDel',JSON.stringify(del));
+  }catch(e){}
+  buildMasterEditor();syncInputUI();ifRenderWS();
+}
+
+// ===== 初期化 =====
+async function init(){
+  loadLocalMasters();
+  await openDB();
+  syncInputUI();ifSelect('ikoType');
+  updateCount();
+  const last=await kvGet('lastHeader');
+  if(last){_d('kenmei').value=last.kenmei||'';_d('kubun').value=last.kubun||'';S.sha=last.sha||'';syncInputUI();}
+  ['kenmei','kubun'].forEach(id=>{
+    _d(id).addEventListener('change',saveHeader);
+  });
+  function saveHeader(){kvSet('lastHeader',{kenmei:_d('kenmei').value,kubun:_d('kubun').value,sha:S.sha});}
+  // 撮影者変更時も保存
+  const origSetText=ifSetText;
+  window.ifSetText=function(key,v){origSetText(key,v);if(key==='sha')saveHeader();};
+  const origSetList=ifSetList;
+  window.ifSetList=function(key,v,n){origSetList(key,v,n);if(key==='sha')saveHeader();};
+}
+init();
+</script>
+</body>
+</html>
