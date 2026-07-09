@@ -93,16 +93,21 @@ tr:hover td{background:#f0f7ff}
 
 /* ===== 全画面看板 ===== */
 #board{position:fixed;inset:0;z-index:1000;display:none;padding:2.4vmin;user-select:none}
-#board.show{display:flex;align-items:center;justify-content:center}
+#board.show{display:block}
 #board.theme-white{background:#fff;color:#111}
 #board.theme-green{background:#123527;color:#F6F3E8}
 /* 看板枠：見本PDF準拠。件名→対象→状況を中央縦積み、下段は方向・撮影日・撮影者を横一列、QR右下 */
 #board .b-frame{
-  /* 4:3固定。画面に収まる最大サイズで中央配置。中身の比率は従来どおり */
+  /* 4:3固定。画面中央に配置。
+     端末が縦向きのときは看板ごと90度回して、常に横向きで表示する。
+     （回転しても 4:3 と中身の比率は保たれる） */
+  --avail-w: calc(100vw - 4.8vmin);
+  --avail-h: calc(100dvh - 4.8vmin);
+  position:absolute; left:50%; top:50%;
+  transform: translate(-50%,-50%);
   aspect-ratio:4/3;
-  width:auto; height:100%;
-  max-width:100%; max-height:100%;
-  flex:0 0 auto;
+  width: min(var(--avail-w), calc(var(--avail-h) * 4 / 3));
+  height: auto;
   container-type:size;
   border:0.5cqmin solid currentColor;border-radius:1.2cqmin;
   display:grid;
@@ -131,6 +136,15 @@ tr:hover td{background:#f0f7ff}
 #board .b-qr svg{display:block;width:26cqmin;height:26cqmin}
 #board .b-qr .noqr{width:26cqmin;height:26cqmin;display:flex;align-items:center;justify-content:center;font-size:2.4cqmin;color:#666;text-align:center;line-height:1.5}
 /* 操作ボタン：数秒でフェードアウト */
+/* 端末が縦向きのとき：看板を90度回して常に横向きに見せる。
+   回転後は画面の「高さ」が看板の「幅」になるので、辺の計算も入れ替える。 */
+@media (orientation:portrait){
+  #board .b-frame{
+    --avail-w: calc(100dvh - 4.8vmin);
+    --avail-h: calc(100vw - 4.8vmin);
+    transform: translate(-50%,-50%) rotate(90deg);
+  }
+}
 #board .b-ctrls{position:absolute;top:1.4cqmin;right:1.6cqmin;left:1.6cqmin;display:flex;justify-content:space-between;pointer-events:none;transition:opacity .5s;z-index:2}
 /* 手書きメモ：看板全体に重なるキャンバス。描画モードのときだけ入力を受ける */
 #board .b-memo{position:absolute;inset:0;z-index:1;pointer-events:none;touch-action:none;border-radius:1.2cqmin}
@@ -152,7 +166,7 @@ tr:hover td{background:#f0f7ff}
 <body>
 
 <header>
-  <h1>📷 写しこみ看板 <span style="font-size:12px;font-weight:400;color:#aad;letter-spacing:.02em">ver.0.42</span></h1>
+  <h1>📷 写しこみ看板 <span style="font-size:12px;font-weight:400;color:#aad;letter-spacing:.02em">ver.0.44</span></h1>
   <div id="saveStatus">記録：0件</div>
 </header>
 
@@ -226,17 +240,17 @@ tr:hover td{background:#f0f7ff}
 
 <!-- ===== 全画面看板（見本PDF準拠レイアウト） ===== -->
 <div id="board" class="theme-white" onclick="pokeCtrls()">
-  <div class="b-ctrls" id="bCtrls">
-    <button id="themeToggle" onclick="toggleTheme(event)">白 / 緑</button>
-    <div class="b-memo-tools" id="bMemoTools">
-      <button id="memoToggle" onclick="toggleMemo(event)">✏️ メモ</button>
-      <button class="memo-only" id="memoPen" onclick="setMemoTool('pen',event)">ペン</button>
-      <button class="memo-only" id="memoEraser" onclick="setMemoTool('eraser',event)">消しゴム</button>
-      <button class="memo-only" id="memoClear" onclick="clearMemo(event)">全消し</button>
-    </div>
-    <button id="closeBoard" onclick="closeBoard(event)">✕</button>
-  </div>
   <div class="b-frame">
+    <div class="b-ctrls" id="bCtrls">
+      <button id="themeToggle" onclick="toggleTheme(event)">白 / 緑</button>
+      <div class="b-memo-tools" id="bMemoTools">
+        <button id="memoToggle" onclick="toggleMemo(event)">✏️ メモ</button>
+        <button class="memo-only" id="memoPen" onclick="setMemoTool('pen',event)">ペン</button>
+        <button class="memo-only" id="memoEraser" onclick="setMemoTool('eraser',event)">消しゴム</button>
+        <button class="memo-only" id="memoClear" onclick="clearMemo(event)">全消し</button>
+      </div>
+      <button id="closeBoard" onclick="closeBoard(event)">✕</button>
+    </div>
     <canvas id="bMemo" class="b-memo"></canvas>
     <div class="b-kenmei" id="bKenmei"></div>
     <div class="b-center">
@@ -515,6 +529,10 @@ async function showBoard(r,recId){
   }
   try{if("wakeLock" in navigator)wakeLock=await navigator.wakeLock.request("screen");}catch(e){}
   try{if(document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen();}catch(e){}
+  // 看板は横向き（4:3）専用。可能な環境では横に固定する。
+  // iPadOS/Safari は未対応なので、その場合は縦向き用の案内オーバーレイが出る。
+  try{ if(screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); }catch(e){}
+  requestAnimationFrame(memoResize);
   const tick=()=>{_d("bClock").textContent=new Date().toLocaleTimeString("ja-JP",{hour12:false});};
   tick();clockTimer=setInterval(tick,1000);
 }
@@ -533,6 +551,7 @@ function closeBoard(ev){
   if(wakeLock){try{wakeLock.release();}catch(e){}wakeLock=null;}
   if(clockTimer){clearInterval(clockTimer);clockTimer=null;}
   if(ctrlTimer){clearTimeout(ctrlTimer);ctrlTimer=null;}
+  try{ if(screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); }catch(e){}
   try{if(document.fullscreenElement)document.exitFullscreen();}catch(e){}
 }
 function toggleTheme(ev){
@@ -545,20 +564,26 @@ function toggleTheme(ev){
 // ===== 手書きメモ（看板全体に重ねたキャンバス。閉じると消える） =====
 let _memoTool='pen', _memoDrawing=false, _memoLast=null;
 function memoCanvas(){ return _d('bMemo'); }
+// 看板が90度回転して表示されているか（端末が縦向きのとき）
+function boardRotated(){
+  return window.matchMedia && window.matchMedia('(orientation:portrait)').matches;
+}
 // キャンバスの解像度を看板枠の実寸に合わせる（Retinaでもぼやけない）
+// ※ 回転しても「枠のレイアウト上の寸法」は変わらないので offsetWidth/Height を使う
+//   （getBoundingClientRect は回転後の外接矩形になり、縦横が入れ替わってしまう）
 function memoResize(){
   const c=memoCanvas(); if(!c)return;
   const frame=document.querySelector('#board .b-frame'); if(!frame)return;
-  const r=frame.getBoundingClientRect();
-  if(!r.width||!r.height)return;
+  const cw=frame.offsetWidth, ch=frame.offsetHeight;
+  if(!cw||!ch)return;
   const dpr=window.devicePixelRatio||1;
-  const w=Math.round(r.width*dpr), h=Math.round(r.height*dpr);
+  const w=Math.round(cw*dpr), h=Math.round(ch*dpr);
   if(c.width===w && c.height===h) return;   // 変わっていなければ再設定しない（描画が消える）
   // 既存の描画を保持したままリサイズ
   let prev=null;
   if(c.width && c.height){ try{ prev=document.createElement('canvas'); prev.width=c.width; prev.height=c.height; prev.getContext('2d').drawImage(c,0,0); }catch(e){ prev=null; } }
   c.width=w; c.height=h;
-  c.style.width=r.width+'px'; c.style.height=r.height+'px';
+  c.style.width=cw+'px'; c.style.height=ch+'px';
   const ctx=c.getContext('2d');
   ctx.lineCap='round'; ctx.lineJoin='round';
   if(prev){ try{ ctx.drawImage(prev,0,0,w,h); }catch(e){} }
@@ -571,20 +596,37 @@ function memoSyncColor(){
   c.dataset.color = green ? '#F6F3E8' : '#111';
 }
 function memoCtx(){ const c=memoCanvas(); return c?c.getContext('2d'):null; }
+// 画面上のポインタ位置を、キャンバス内部の座標に変換する。
+// 縦向きでは看板が rotate(90deg) されているので、その逆変換が要る。
+// CSSのrotate(90deg)は、ローカル座標(x,y)を画面上の(-y, x)に写す。
 function memoPos(e){
-  const c=memoCanvas(); const r=c.getBoundingClientRect();
+  const c=memoCanvas();
   const dpr=window.devicePixelRatio||1;
-  return { x:(e.clientX-r.left)*dpr, y:(e.clientY-r.top)*dpr };
+  const cssW=c.clientWidth || parseFloat(c.style.width) || 1;
+  const cssH=c.clientHeight || parseFloat(c.style.height) || 1;
+  const r=c.getBoundingClientRect();          // 回転後の外接矩形
+  const cx=(r.left+r.right)/2, cy=(r.top+r.bottom)/2;   // 中心は回転しても不変
+  let lx, ly;
+  if(boardRotated()){
+    // 画面オフセット(sx,sy) = ( -(ly-cssH/2), (lx-cssW/2) ) を解く
+    lx = (e.clientY - cy) + cssW/2;
+    ly = -(e.clientX - cx) + cssH/2;
+  }else{
+    lx = (e.clientX - cx) + cssW/2;
+    ly = (e.clientY - cy) + cssH/2;
+  }
+  return { x:lx*dpr, y:ly*dpr };
 }
 // QRの上には描かせない（線が乗ると読み取れなくなる）。周囲の余白も少し含めて守る。
+// 回転の影響を受けないよう、枠の中での相対位置（offset）で判定する。
 function memoInQR(p){
-  const c=memoCanvas(); const qr=document.querySelector('#board .b-qr');
-  if(!c||!qr)return false;
-  const cr=c.getBoundingClientRect(), qb=qr.getBoundingClientRect();
+  const c=memoCanvas(); const qr=_d('bQr'); const frame=document.querySelector('#board .b-frame');
+  if(!c||!qr||!frame)return false;
   const dpr=window.devicePixelRatio||1;
   const pad=8*dpr; // クワイエットゾーンぶんの余裕
-  const x0=(qb.left-cr.left)*dpr-pad, x1=(qb.right-cr.left)*dpr+pad;
-  const y0=(qb.top-cr.top)*dpr-pad,  y1=(qb.bottom-cr.top)*dpr+pad;
+  // qr の offsetParent は .b-frame（position:absolute のため）
+  const x0=qr.offsetLeft*dpr-pad, x1=(qr.offsetLeft+qr.offsetWidth)*dpr+pad;
+  const y0=qr.offsetTop*dpr-pad,  y1=(qr.offsetTop+qr.offsetHeight)*dpr+pad;
   return p.x>=x0 && p.x<=x1 && p.y>=y0 && p.y<=y1;
 }
 function memoStart(e){
@@ -659,8 +701,14 @@ function clearMemo(ev){
   c.addEventListener('pointerup', memoEnd);
   c.addEventListener('pointercancel', memoEnd);
   c.addEventListener('pointerleave', memoEnd);
-  window.addEventListener('resize', ()=>{ if(_d('board').classList.contains('show')) memoResize(); });
-  window.addEventListener('orientationchange', ()=>setTimeout(memoResize,300));
+  window.addEventListener('resize', ()=>{ if(_d('board').classList.contains('show')) requestAnimationFrame(memoResize); });
+  window.addEventListener('orientationchange', ()=>setTimeout(()=>{ if(_d('board').classList.contains('show')) memoResize(); },350));
+  if(window.matchMedia){
+    // 縦→横に戻ったときにキャンバスを作り直す（縦の間は枠が非表示で寸法が取れない）
+    const mq=window.matchMedia('(orientation:landscape)');
+    const onCh=()=>{ if(_d('board').classList.contains('show')) setTimeout(memoResize,120); };
+    mq.addEventListener ? mq.addEventListener('change',onCh) : mq.addListener(onCh);
+  }
 })();
 
 // ===== 一覧 =====
