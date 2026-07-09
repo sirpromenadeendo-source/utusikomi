@@ -132,6 +132,17 @@ tr:hover td{background:#f0f7ff}
 #board .b-qr .noqr{width:26cqmin;height:26cqmin;display:flex;align-items:center;justify-content:center;font-size:2.4cqmin;color:#666;text-align:center;line-height:1.5}
 /* 操作ボタン：数秒でフェードアウト */
 #board .b-ctrls{position:absolute;top:1.4cqmin;right:1.6cqmin;left:1.6cqmin;display:flex;justify-content:space-between;pointer-events:none;transition:opacity .5s;z-index:2}
+/* 手書きメモ：看板全体に重なるキャンバス。描画モードのときだけ入力を受ける */
+#board .b-memo{position:absolute;inset:0;z-index:1;pointer-events:none;touch-action:none;border-radius:1.2cqmin}
+#board.memo-on .b-memo{pointer-events:auto}
+#board .b-memo-tools{display:flex;gap:1vmin;pointer-events:auto}
+#board .b-memo-tools .memo-only{display:none}
+#board.memo-on .b-memo-tools .memo-only{display:inline-block}
+#board.memo-on #memoToggle{background:#2c5f8a;color:#fff}
+#board.memo-on .b-ctrls{opacity:1 !important}
+#board .b-memo-tools button.act{outline:2px solid #2c5f8a}
+/* メモモード中はQRが保護対象であることを示す */
+#board.memo-on .b-qr{outline:2px dashed rgba(44,95,138,.5);outline-offset:2px}
 #board .b-ctrls.hidden{opacity:0}
 #board .b-ctrls button{pointer-events:auto}
 #closeBoard{width:7vmin;height:7vmin;min-width:40px;min-height:40px;border-radius:50%;border:none;cursor:pointer;font-size:3.4vmin;background:rgba(128,128,128,.18);color:inherit}
@@ -141,7 +152,7 @@ tr:hover td{background:#f0f7ff}
 <body>
 
 <header>
-  <h1>📷 写しこみ看板 <span style="font-size:12px;font-weight:400;color:#aad;letter-spacing:.02em">ver.0.3</span></h1>
+  <h1>📷 写しこみ看板 <span style="font-size:12px;font-weight:400;color:#aad;letter-spacing:.02em">ver.0.42</span></h1>
   <div id="saveStatus">記録：0件</div>
 </header>
 
@@ -217,9 +228,16 @@ tr:hover td{background:#f0f7ff}
 <div id="board" class="theme-white" onclick="pokeCtrls()">
   <div class="b-ctrls" id="bCtrls">
     <button id="themeToggle" onclick="toggleTheme(event)">白 / 緑</button>
+    <div class="b-memo-tools" id="bMemoTools">
+      <button id="memoToggle" onclick="toggleMemo(event)">✏️ メモ</button>
+      <button class="memo-only" id="memoPen" onclick="setMemoTool('pen',event)">ペン</button>
+      <button class="memo-only" id="memoEraser" onclick="setMemoTool('eraser',event)">消しゴム</button>
+      <button class="memo-only" id="memoClear" onclick="clearMemo(event)">全消し</button>
+    </div>
     <button id="closeBoard" onclick="closeBoard(event)">✕</button>
   </div>
   <div class="b-frame">
+    <canvas id="bMemo" class="b-memo"></canvas>
     <div class="b-kenmei" id="bKenmei"></div>
     <div class="b-center">
       <div class="b-taishou-row">
@@ -243,7 +261,7 @@ tr:hover td{background:#f0f7ff}
 "use strict";
 // ===== 選択肢マスタ =====
 const MASTERS = {
-  ikoType: ['SA','SB','SC','SD','SE','SF','SG','SH','SI','SJ','SK','SL','SM','SN','SO','SP','SS','ST','SU','SW','SX','SY','SZ','NR'],
+  ikoType: ['P','SA','SB','SC','SD','SE','SF','SG','SH','SI','SJ','SK','SL','SM','SN','SO','SP','SS','ST','SU','SW','SX','SY','SZ','NR'],
   taishou2: ['カマド','炉','P1','P2','P3','P4','P5','貯蔵穴'],
   joukyou: ['検出','完掘','断面','掘方完掘','掘方断面','出土状況','検出状況','設定状況','復旧状況','全景','近景'],
   shubetsu: ['調査','管理','測量','3D','作業風景','メモ'],
@@ -289,7 +307,7 @@ function recClear(){return new Promise(res=>{db.transaction("records","readwrite
 
 // ===== 入力状態 =====
 function todayStr(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
-let S = {ikoType:'',ikoNum:'',t1free:'',t2:'',joukyou:'',houkou:'',sha:'',shubetsu:'',date:todayStr(),biko:''};
+let S = {ikoType:'',ikoNum:'',t1free:'',t2:'',joukyou:'',houkou:'',sha:'',shubetsu:'調査',date:todayStr(),biko:''};
 
 const _d=id=>document.getElementById(id);
 const _esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -298,7 +316,7 @@ const _eq=s=>String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'");
 // ===== スロット定義 =====
 const IF={
   ikoType:{label:'遺構種別',type:'list',master:'ikoType',key:'ikoType',span:2},
-  ikoNum:{label:'番号',type:'num',key:'ikoNum',pad:2,max:99,span:2},
+  ikoNum:{label:'番号',type:'num',key:'ikoNum',pad:2,max:99,span:2}, // ※pad/maxは遺構種別で動的に上書き（numDigits/numMax）
   t1free:{label:'対象1（自由入力・優先）',type:'text',key:'t1free',ph:'例：A区全景・1号トレンチ',span:2},
   t2:{label:'対象2',type:'listtext',master:'taishou2',key:'t2',ph:'自由入力も可',span:3},
   joukyou:{label:'状況',type:'list',master:'joukyou',key:'joukyou',span:3},
@@ -312,6 +330,10 @@ const IFORDER=['ikoType','ikoNum','t1free','t2','joukyou','houkou','sha','shubet
 let ifActive='ikoType';
 
 function taishou1(){ return S.t1free.trim() || ((S.ikoType||'')+(S.ikoNum||'')); }
+// 遺構種別ごとの番号の桁数。ピット(P)は数が多いので3桁、他は2桁。
+const NUMDIGITS={ P:3 };
+function numDigits(type){ return NUMDIGITS[type] || 2; }
+function numMax(type){ return Math.pow(10, numDigits(type)) - 1; }  // P→999, 他→99
 function ifVal(key){
   if(key==='houkou')return S.houkou?S.houkou+'から':'';
   if(key==='date')return (S.date||'').replace(/-/g,'.');
@@ -353,7 +375,18 @@ function wsListText(f){
   return `<div class="opt-grid">${cells}<button class="opt blank${cur===''?' sel':''}" onclick="ifSetList('${f.key}','',true)">クリア</button></div>`+
     `<div class="ws-sub">自由入力</div><input class="ws-text" placeholder="${_esc(f.ph||'')}" value="${inList?'':_esc(cur)}" oninput="ifSetText('${f.key}',this.value)">`+nextBtnHtml();
 }
-function ifSetList(key,v,noAdvance){S[key]=v;syncInputUI();if(noAdvance)ifRenderWS();else ifAdvance();}
+function ifSetList(key,v,noAdvance){
+  S[key]=v;
+  // 遺構種別を変えたら、番号のゼロ埋めを新しい桁数に合わせ直す（SI01 → P001）
+  if(key==='ikoType' && S.ikoNum){
+    const n=String(parseInt(S.ikoNum,10)||'');
+    if(n){
+      const max=numMax(v);
+      S.ikoNum = (parseInt(n,10)<=max) ? n.padStart(numDigits(v),'0') : '';
+    }
+  }
+  syncInputUI();if(noAdvance)ifRenderWS();else ifAdvance();
+}
 function ifSetText(key,v){S[key]=v;syncInputUI();}
 function wsPad(f){
   const cur=S[f.key]||'';
@@ -362,11 +395,15 @@ function wsPad(f){
 }
 function ifPad(key,k){
   const f=IF[key];let cur=S[key]||'';
+  // 遺構番号は種別ごとに桁数・上限が変わる（P=3桁/999、他=2桁/99）
+  const isIkoNum = (key==='ikoNum');
+  const pad = isIkoNum ? numDigits(S.ikoType) : f.pad;
+  const max = isIkoNum ? numMax(S.ikoType)   : f.max;
   let base=cur.replace(/^0+(?=\d)/,'');
   if(k==='C')base='';
   else if(k==='⌫')base=base.slice(0,-1);
-  else{const nx=(base+k).replace(/^0+(?=\d)/,'');if(nx!==''&&parseInt(nx,10)<=f.max)base=nx;}
-  S[key]=base===''?'':(f.pad?base.padStart(f.pad,'0'):base);
+  else{const nx=(base+k).replace(/^0+(?=\d)/,'');if(nx!==''&&parseInt(nx,10)<=max)base=nx;}
+  S[key]=base===''?'':(pad?base.padStart(pad,'0'):base);
   syncInputUI();ifRenderWS();
 }
 function wsText(f){
@@ -386,7 +423,7 @@ function wsDate(f){
     `<button class="opt" style="margin-left:8px;display:inline-block" onclick="ifSetText('date','${todayStr()}');ifRenderWS()">今日</button>`+nextBtnHtml();
 }
 function resetForm(){
-  S.ikoType='';S.ikoNum='';S.t1free='';S.t2='';S.joukyou='';S.houkou='';S.shubetsu='';S.biko='';
+  S.ikoType='';S.ikoNum='';S.t1free='';S.t2='';S.joukyou='';S.houkou='';S.shubetsu='調査';S.biko='';
   syncInputUI();ifSelect('ikoType');
 }
 
@@ -412,10 +449,13 @@ function formToRec(){
 }
 function recToForm(r){
   _d('kenmei').value=r.kenmei||''; _d('kubun').value=r.kubun||'';
-  // 対象1をできるだけ 種別+番号 に分解して復元
+  // 対象1をできるだけ 種別+番号 に分解して復元（Pは3桁、他は2桁）
   S.ikoType='';S.ikoNum='';S.t1free='';
-  const m=(r.t1||'').match(/^([A-Z]{1,2})(\d{1,2})$/);
-  if(m&&MASTERS.ikoType.includes(m[1])){S.ikoType=m[1];S.ikoNum=m[2].padStart(2,'0');}
+  const m=(r.t1||'').match(/^([A-Z]{1,2})(\d{1,3})$/);
+  if(m&&MASTERS.ikoType.includes(m[1])&&parseInt(m[2],10)<=numMax(m[1])){
+    S.ikoType=m[1];
+    S.ikoNum=String(parseInt(m[2],10)).padStart(numDigits(m[1]),'0');
+  }
   else S.t1free=r.t1||'';
   S.t2=r.t2||'';S.joukyou=r.joukyou||'';S.houkou=r.houkou||'';
   S.sha=r.sha||'';S.shubetsu=r.shubetsu||'';S.date=r.date||todayStr();S.biko=r.biko||'';
@@ -465,6 +505,8 @@ async function showBoard(r,recId){
   _d("bBiko").textContent=r.biko||"";
   renderQR(r);
   _d("board").classList.add("show");
+  memoOff();                       // 前回の手書きを残さない
+  requestAnimationFrame(memoResize); // 枠の実寸が決まってからキャンバスを合わせる
   pokeCtrls();
   if(recId!=null){
     const all=await recAll();
@@ -487,6 +529,7 @@ async function showBoardFromForm(){
 function closeBoard(ev){
   if(ev)ev.stopPropagation();
   _d("board").classList.remove("show");
+  memoOff();          // メモを消してモード解除（看板を閉じたら残さない）
   if(wakeLock){try{wakeLock.release();}catch(e){}wakeLock=null;}
   if(clockTimer){clearInterval(clockTimer);clockTimer=null;}
   if(ctrlTimer){clearTimeout(ctrlTimer);ctrlTimer=null;}
@@ -496,7 +539,129 @@ function toggleTheme(ev){
   ev.stopPropagation();
   const b=_d("board");
   b.classList.toggle("theme-white");b.classList.toggle("theme-green");
+  memoSyncColor();
 }
+
+// ===== 手書きメモ（看板全体に重ねたキャンバス。閉じると消える） =====
+let _memoTool='pen', _memoDrawing=false, _memoLast=null;
+function memoCanvas(){ return _d('bMemo'); }
+// キャンバスの解像度を看板枠の実寸に合わせる（Retinaでもぼやけない）
+function memoResize(){
+  const c=memoCanvas(); if(!c)return;
+  const frame=document.querySelector('#board .b-frame'); if(!frame)return;
+  const r=frame.getBoundingClientRect();
+  if(!r.width||!r.height)return;
+  const dpr=window.devicePixelRatio||1;
+  const w=Math.round(r.width*dpr), h=Math.round(r.height*dpr);
+  if(c.width===w && c.height===h) return;   // 変わっていなければ再設定しない（描画が消える）
+  // 既存の描画を保持したままリサイズ
+  let prev=null;
+  if(c.width && c.height){ try{ prev=document.createElement('canvas'); prev.width=c.width; prev.height=c.height; prev.getContext('2d').drawImage(c,0,0); }catch(e){ prev=null; } }
+  c.width=w; c.height=h;
+  c.style.width=r.width+'px'; c.style.height=r.height+'px';
+  const ctx=c.getContext('2d');
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  if(prev){ try{ ctx.drawImage(prev,0,0,w,h); }catch(e){} }
+  memoSyncColor();
+}
+// テーマに応じてペン色を変える（白地→黒、緑地→クリーム）
+function memoSyncColor(){
+  const c=memoCanvas(); if(!c)return;
+  const green=_d('board').classList.contains('theme-green');
+  c.dataset.color = green ? '#F6F3E8' : '#111';
+}
+function memoCtx(){ const c=memoCanvas(); return c?c.getContext('2d'):null; }
+function memoPos(e){
+  const c=memoCanvas(); const r=c.getBoundingClientRect();
+  const dpr=window.devicePixelRatio||1;
+  return { x:(e.clientX-r.left)*dpr, y:(e.clientY-r.top)*dpr };
+}
+// QRの上には描かせない（線が乗ると読み取れなくなる）。周囲の余白も少し含めて守る。
+function memoInQR(p){
+  const c=memoCanvas(); const qr=document.querySelector('#board .b-qr');
+  if(!c||!qr)return false;
+  const cr=c.getBoundingClientRect(), qb=qr.getBoundingClientRect();
+  const dpr=window.devicePixelRatio||1;
+  const pad=8*dpr; // クワイエットゾーンぶんの余裕
+  const x0=(qb.left-cr.left)*dpr-pad, x1=(qb.right-cr.left)*dpr+pad;
+  const y0=(qb.top-cr.top)*dpr-pad,  y1=(qb.bottom-cr.top)*dpr+pad;
+  return p.x>=x0 && p.x<=x1 && p.y>=y0 && p.y<=y1;
+}
+function memoStart(e){
+  if(!_d('board').classList.contains('memo-on'))return;
+  e.preventDefault(); e.stopPropagation();
+  const c=memoCanvas(); c.setPointerCapture&&c.setPointerCapture(e.pointerId);
+  _memoDrawing=true; _memoLast=null;
+  memoDraw(e); // 点を打つ
+}
+function memoMove(e){
+  if(!_memoDrawing)return;
+  e.preventDefault(); e.stopPropagation();
+  memoDraw(e);
+}
+function memoEnd(e){
+  if(!_memoDrawing)return;
+  _memoDrawing=false; _memoLast=null;
+}
+function memoDraw(e){
+  const ctx=memoCtx(); const c=memoCanvas(); if(!ctx)return;
+  const dpr=window.devicePixelRatio||1;
+  const p=memoPos(e);
+  // ペンのときだけQR領域を保護（消しゴムは通す）
+  if(_memoTool==='pen' && memoInQR(p)){ _memoLast=null; return; }
+  const pressure=(e.pressure && e.pressure>0 && e.pointerType==='pen') ? e.pressure : 0.5;
+  if(_memoTool==='eraser'){
+    ctx.globalCompositeOperation='destination-out';
+    ctx.strokeStyle='rgba(0,0,0,1)';
+    ctx.lineWidth=28*dpr;
+  }else{
+    ctx.globalCompositeOperation='source-over';
+    ctx.strokeStyle=c.dataset.color||'#111';
+    ctx.lineWidth=(3 + pressure*6)*dpr;
+  }
+  ctx.beginPath();
+  if(_memoLast){ ctx.moveTo(_memoLast.x,_memoLast.y); ctx.lineTo(p.x,p.y); }
+  else { ctx.moveTo(p.x,p.y); ctx.lineTo(p.x+0.1,p.y+0.1); }
+  ctx.stroke();
+  ctx.globalCompositeOperation='source-over';
+  _memoLast=p;
+}
+function toggleMemo(ev){
+  if(ev)ev.stopPropagation();
+  const b=_d('board');
+  const on=b.classList.toggle('memo-on');
+  if(on){ memoResize(); setMemoTool('pen'); }
+  else { pokeCtrls(); }
+}
+function memoOff(){
+  const b=_d('board'); if(!b)return;
+  b.classList.remove('memo-on');
+  const c=memoCanvas();
+  if(c && c.width && c.height){ c.getContext('2d').clearRect(0,0,c.width,c.height); }
+  _memoDrawing=false; _memoLast=null;
+}
+function setMemoTool(t,ev){
+  if(ev)ev.stopPropagation();
+  _memoTool=t;
+  _d('memoPen').classList.toggle('act', t==='pen');
+  _d('memoEraser').classList.toggle('act', t==='eraser');
+}
+function clearMemo(ev){
+  if(ev)ev.stopPropagation();
+  const c=memoCanvas(); if(!c||!c.width)return;
+  c.getContext('2d').clearRect(0,0,c.width,c.height);
+}
+// イベント登録（ポインタ＝マウス・指・Apple Pencil を統一して扱える）
+(function initMemo(){
+  const c=_d('bMemo'); if(!c)return;
+  c.addEventListener('pointerdown', memoStart);
+  c.addEventListener('pointermove', memoMove);
+  c.addEventListener('pointerup', memoEnd);
+  c.addEventListener('pointercancel', memoEnd);
+  c.addEventListener('pointerleave', memoEnd);
+  window.addEventListener('resize', ()=>{ if(_d('board').classList.contains('show')) memoResize(); });
+  window.addEventListener('orientationchange', ()=>setTimeout(memoResize,300));
+})();
 
 // ===== 一覧 =====
 async function renderList(){
