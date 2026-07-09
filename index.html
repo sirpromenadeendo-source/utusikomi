@@ -126,15 +126,16 @@ tr:hover td{background:#f0f7ff}
 #board .b-joukyou{font-size:9cqmin;font-weight:800}
 #board .b-biko{font-size:3.2cqmin;opacity:.85}
 /* 下段：方向・撮影日・撮影者を横一列（見本の「南から2018.4.1遠竹」） */
-#board .b-foot{grid-area:foot;display:flex;align-items:flex-end;flex-wrap:wrap;gap:0 3cqmin;align-content:flex-end}
-#board .b-foot .b-houkou{font-size:7cqmin;font-weight:800;white-space:nowrap;line-height:1.05}
-#board .b-foot .b-date{font-size:7cqmin;font-weight:800;white-space:nowrap;line-height:1.05}
-#board .b-foot .b-sha{font-size:7cqmin;font-weight:800;white-space:nowrap;line-height:1.05}
+#board .b-foot{grid-area:foot;display:flex;align-items:flex-end;flex-wrap:wrap;gap:0 2.2cqmin;align-content:flex-end;min-width:0}
+#board .b-foot>span{flex:0 0 auto}
+#board .b-foot .b-houkou{font-size:5cqmin;font-weight:800;white-space:nowrap;line-height:1.05}
+#board .b-foot .b-date{font-size:5cqmin;font-weight:800;white-space:nowrap;line-height:1.05}
+#board .b-foot .b-sha{font-size:5cqmin;font-weight:800;white-space:nowrap;line-height:1.05}
 #board .b-clock{flex-basis:100%;font-size:2.8cqmin;opacity:.6;font-family:ui-monospace,Menlo,Consolas,monospace;margin-top:.4cqmin}
 /* 右下：QR（下段テキストの右、やや大きめ） */
 #board .b-qr{grid-area:qr;align-self:end;justify-self:end;background:#fff;border-radius:1.2cqmin;padding:1.4cqmin;line-height:0;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
-#board .b-qr svg{display:block;width:26cqmin;height:26cqmin}
-#board .b-qr .noqr{width:26cqmin;height:26cqmin;display:flex;align-items:center;justify-content:center;font-size:2.4cqmin;color:#666;text-align:center;line-height:1.5}
+#board .b-qr svg{display:block;width:39cqmin;height:39cqmin}
+#board .b-qr .noqr{width:39cqmin;height:39cqmin;display:flex;align-items:center;justify-content:center;font-size:2.4cqmin;color:#666;text-align:center;line-height:1.5}
 /* 操作ボタン：数秒でフェードアウト */
 /* 端末が縦向きのとき：看板を90度回して常に横向きに見せる。
    回転後は画面の「高さ」が看板の「幅」になるので、辺の計算も入れ替える。 */
@@ -166,7 +167,7 @@ tr:hover td{background:#f0f7ff}
 <body>
 
 <header>
-  <h1>📷 写しこみ看板 <span style="font-size:12px;font-weight:400;color:#aad;letter-spacing:.02em">ver.0.44</span></h1>
+  <h1>📷 写しこみ看板 <span style="font-size:12px;font-weight:400;color:#aad;letter-spacing:.02em">ver.0.45</span></h1>
   <div id="saveStatus">記録：0件</div>
 </header>
 
@@ -487,6 +488,13 @@ function escP(s){return (s||"").replace(/\|/g,"／");}
 function qrPayload(r){
   return ["T1",r.kenmei,r.kubun,r.t1,r.t2,r.joukyou,r.houkou,r.date,r.sha,r.shubetsu,r.biko].map(escP).join("|");
 }
+// 看板に出す日付。年は省いて「7月9日」の形にする（表示だけ。
+// 記録・QR・台帳に渡す r.date は "2026-07-09" のまま変えない）。
+function boardDateText(d){
+  const m=String(d||"").match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(!m) return String(d||"").replace(/-/g,".");
+  return parseInt(m[2],10)+"月"+parseInt(m[3],10)+"日";
+}
 function renderQR(r){
   const box=_d("bQr");
   try{
@@ -514,7 +522,7 @@ async function showBoard(r,recId){
   _d("bT2").textContent=r.t2||"";
   _d("bJoukyou").textContent=r.joukyou||"";
   _d("bHoukou").textContent=r.houkou?(r.houkou+"から"):"";
-  _d("bDate").textContent=(r.date||"").replace(/-/g,".");
+  _d("bDate").textContent=boardDateText(r.date);
   _d("bSha").textContent=r.sha||"";
   _d("bBiko").textContent=r.biko||"";
   renderQR(r);
