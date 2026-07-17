@@ -15,7 +15,17 @@
 <meta name="apple-mobile-web-app-title" content="写しこみ看板">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<!-- QRを作る部品。以前はcdnjsから読んでいたが、同梱に変更（圏外・社内網の遮断・CDN障害に強い）。 -->
+<script src="qrcode.min.js"></script>
+<script>
+// 圏外でもアプリが開くようにする。通信優先なので、更新はいつもどおりすぐ反映される。
+// file:// で開いたときは登録に失敗するが、アプリは通常どおり動く。
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Hiragino Sans','Meiryo',sans-serif;font-size:15px;background:#f4f4f4;color:#222}
@@ -178,7 +188,7 @@ tr:hover td{background:#f0f7ff}
 <body>
 
 <header>
-  <h1>📷 写しこみ看板 <span style="font-size:12px;font-weight:400;color:#aad;letter-spacing:.02em">ver.1.01</span></h1>
+  <h1>📷 写しこみ看板 <span style="font-size:12px;font-weight:400;color:#aad;letter-spacing:.02em">ver.1.02</span></h1>
   <div id="saveStatus">記録：0件</div>
 </header>
 
@@ -247,6 +257,16 @@ tr:hover td{background:#f0f7ff}
   <p class="notice" style="margin-top:10px">
     運用メモ：看板を撮る → 対象を数枚 → 次の看板を撮る（QR入り写真が区切り）。画面輝度は最大に。
     「看板を表示」した時刻はすべて記録され、JSONに含まれます（時刻照合フォールバック用）。
+  </p>
+  <hr style="margin:14px 0">
+  <h3 style="font-size:14px;margin-bottom:8px">アプリの状態</h3>
+  <div class="qrfmt" id="appInfo">確認中…</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:480px;margin-top:8px">
+    <button class="btn" onclick="reloadFresh()">🔄 最新に更新</button>
+  </div>
+  <p class="notice" style="margin-top:10px">
+    動きがおかしいときは「最新に更新」を押してください。手元の控えを捨てて、サーバから読み直します。
+    記録は消えません（消えるのは控えだけです）。
   </p>
 </div>
 
@@ -461,7 +481,7 @@ function switchTab(name){
   });
   document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===`panel-${name}`));
   if(name==='list')renderList();
-  if(name==='settings')buildMasterEditor();
+  if(name==='settings'){buildMasterEditor();showAppInfo();}
 }
 
 // ===== レコード =====
@@ -759,6 +779,44 @@ async function dupEdit(id){const all=await recAll();const r=all.find(x=>x.id===i
 async function delRec(id){if(confirm('#'+id+' を削除しますか？')){await recDel(id);renderList();}}
 async function clearAll(){
   if(confirm('記録をすべて削除しますか？（CSV/JSONを出力済みか確認してください）')){await recClear();updateCount();renderList();}
+}
+
+// ===== アプリの状態（設定タブ） =====
+// 圏外対応の仕組み（Service Worker）が効いているかを、現場の人にも分かる言葉で出す。
+async function showAppInfo(){
+  const el=_d('appInfo'); if(!el)return;
+  const ver=(document.querySelector('h1 span')||{}).textContent||'';
+  const lines=['版数：'+ver];
+  if(location.protocol==='file:'){
+    lines.push('圏外対応：なし（ファイルを直接開いています）');
+  }else if(!('serviceWorker' in navigator)){
+    lines.push('圏外対応：このブラウザは非対応');
+  }else{
+    try{
+      const regs=await navigator.serviceWorker.getRegistrations();
+      const on=regs.length>0 && !!navigator.serviceWorker.controller;
+      lines.push('圏外対応：'+(on?'有効（圏外でも開けます）':'まだ有効ではありません（一度開き直してください）'));
+      const ks=await caches.keys();
+      lines.push('手元の控え：'+(ks.length?ks.join(', '):'なし'));
+    }catch(e){ lines.push('圏外対応：確認できませんでした'); }
+  }
+  lines.push('接続：'+(navigator.onLine?'オンライン':'圏外'));
+  el.textContent=lines.join('\n');
+}
+// 手元の控えを捨ててサーバから読み直す。記録（IndexedDB）には触らない。
+async function reloadFresh(){
+  if(!confirm('手元の控えを捨てて、サーバから読み直します。\n記録は消えません。よろしいですか？'))return;
+  try{
+    if('caches' in window){
+      const ks=await caches.keys();
+      await Promise.all(ks.map(k=>caches.delete(k)));
+    }
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map(r=>r.unregister()));
+    }
+  }catch(e){}
+  location.reload(true);
 }
 
 // ===== 出力 =====
