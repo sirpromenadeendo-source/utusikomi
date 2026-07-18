@@ -188,7 +188,7 @@ tr:hover td{background:#f0f7ff}
 <body>
 
 <header>
-  <h1>📷 写しこみ看板 <span style="font-size:12px;font-weight:400;color:#aad;letter-spacing:.02em">ver.1.02</span></h1>
+  <h1>📷 写しこみ看板 <span style="font-size:12px;font-weight:400;color:#aad;letter-spacing:.02em">ver.1.03</span></h1>
   <div id="saveStatus">記録：0件</div>
 </header>
 
@@ -259,15 +259,17 @@ tr:hover td{background:#f0f7ff}
     「看板を表示」した時刻はすべて記録され、JSONに含まれます（時刻照合フォールバック用）。
   </p>
   <hr style="margin:14px 0">
+  <div id="appInfoSection">
   <h3 style="font-size:14px;margin-bottom:8px">アプリの状態</h3>
   <div class="qrfmt" id="appInfo">確認中…</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;max-width:480px;margin-top:8px">
-    <button class="btn" onclick="reloadFresh()">🔄 最新に更新</button>
+    <button class="btn btn-white" style="border:1px solid #ccc" onclick="reloadFresh()">🔄 最新に更新</button>
   </div>
   <p class="notice" style="margin-top:10px">
     動きがおかしいときは「最新に更新」を押してください。手元の控えを捨てて、サーバから読み直します。
     記録は消えません（消えるのは控えだけです）。
   </p>
+  </div>
 </div>
 
 <!-- ===== 全画面看板（見本PDF準拠レイアウト） ===== -->
@@ -365,7 +367,7 @@ const IF={
   ikoNum:{label:'番号',type:'num',key:'ikoNum',pad:2,max:99,span:2}, // ※pad/maxは遺構種別で動的に上書き（numDigits/numMax）
   t1free:{label:'対象1（自由入力・優先）',type:'text',key:'t1free',ph:'例：A区全景・1号トレンチ',span:2},
   t2:{label:'対象2',type:'listtext',master:'taishou2',key:'t2',ph:'自由入力も可',span:3},
-  joukyou:{label:'状況',type:'list',master:'joukyou',key:'joukyou',span:3},
+  joukyou:{label:'状況',type:'listtext',master:'joukyou',key:'joukyou',ph:'自由入力も可',span:3},
   houkou:{label:'方向',type:'compass',key:'houkou',span:2},
   sha:{label:'撮影者',type:'listtext',master:'sha',key:'sha',ph:'氏名',span:2},
   shubetsu:{label:'種別',type:'list',master:'shubetsu',key:'shubetsu',span:2},
@@ -373,6 +375,9 @@ const IF={
   biko:{label:'備考',type:'textarea',key:'biko',ph:'自由記入（看板には小さく表示）',span:3}
 };
 const IFORDER=['ikoType','ikoNum','t1free','t2','joukyou','houkou','sha','shubetsu','date','biko'];
+// 「次へ」で止まるスロットの順路。対象1の自由入力（t1free）は補助なので、送りでは飛ばす。
+// 状況(joukyou)は選択肢＋自由入力だが、選ぶと次へ進む（自由入力欄は残す）。
+const IFNEXT=['ikoType','ikoNum','t2','joukyou','houkou','sha','shubetsu','date','biko'];
 let ifActive='ikoType';
 
 function taishou1(){ return S.t1free.trim() || ((S.ikoType||'')+(S.ikoNum||'')); }
@@ -395,7 +400,18 @@ function syncInputUI(){
   }).join('');
 }
 function ifSelect(key){ifActive=key;syncInputUI();ifRenderWS();}
-function ifAdvance(){const idx=IFORDER.indexOf(ifActive);if(idx>=0&&idx<IFORDER.length-1)ifSelect(IFORDER[idx+1]);}
+function ifAdvance(){
+  // 「次へ」は IFNEXT の順で送る（対象1の自由入力は経路に含めない）。
+  // いま自由入力スロット(t1free)にいる場合は、その直前スロットの位置を基準に次へ進む。
+  let cur=ifActive;
+  if(!IFNEXT.includes(cur)){
+    // t1free など経路外にいるとき：IFORDER上でひとつ前の、経路に含まれるスロットを基準にする
+    const oi=IFORDER.indexOf(cur);
+    for(let i=oi-1;i>=0;i--){ if(IFNEXT.includes(IFORDER[i])){ cur=IFORDER[i]; break; } }
+  }
+  const idx=IFNEXT.indexOf(cur);
+  if(idx>=0&&idx<IFNEXT.length-1)ifSelect(IFNEXT[idx+1]);
+}
 function ifRenderWS(){
   const f=IF[ifActive];
   _d('ws-title').textContent=f.label;
